@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -r data .next/standalone/",
-    "start": "node .next/standalone/server.js",
+    "start": "node start.js",
     "start:dev": "next dev -p 3000",
     "lint": "eslint .",
     "db:push": "echo \"[db:push] JSON store does not require migration — no-op\"",
