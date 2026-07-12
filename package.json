@@ -4,13 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -r data .next/standalone/",
-    "start": "node start.js",
-    "start:dev": "next dev -p 3000",
-    "lint": "eslint .",
-    "db:push": "echo \"[db:push] JSON store does not require migration — no-op\"",
-    "db:generate": "echo \"[db:generate] JSON store does not require codegen — no-op\"",
-    "db:seed": "echo \"[db:seed] JSON store auto-seeds on first access — no-op\""
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
