@@ -13,6 +13,7 @@ interface SiteConfigData {
   horarioSectionTitle: string;
   horarioSectionDesc: string;
   horarioCards: string;
+  cover: string;
 }
 
 const CARD_COLORS: Record<string, { bg: string; iconBg: string; border: string }> = {
@@ -45,6 +46,7 @@ export function HeroBanner() {
           horarioSectionTitle: data.horarioSectionTitle || 'Pide cuando quieras, recíbelo en casa',
           horarioSectionDesc: data.horarioSectionDesc || 'Tres cosas que debes saber sobre cómo trabajamos para que tu compra llegue siempre a tiempo.',
           horarioCards: data.horarioCards || '[]',
+          cover: data.cover || '/products/cover-real.jpg',
         });
       })
       .catch(() => {});
@@ -58,13 +60,21 @@ export function HeroBanner() {
   return (
     <section className="relative overflow-hidden bg-white">
       <div className="max-w-7xl mx-auto px-4 py-6 md:py-12">
-        {/* ── Hero: imagen limpia ── */}
+        {/* ── Hero: imagen con texto "Díaz Premium Envíos" en la parte superior ── */}
         <div className="relative rounded-2xl overflow-hidden shadow-xl">
           <img
-            src="/products/cover-real.jpg"
+            src={config?.cover || '/products/cover-real.jpg'}
             alt="Diaz Premium Envíos - Envíos rápidos y seguros"
-            className="w-full h-[200px] sm:h-[320px] md:h-[420px] object-cover"
+            className="w-full h-[200px] sm:h-[340px] md:h-[440px] object-cover object-bottom"
           />
+          {/* Overlay sutil en la parte superior para que el texto se lea bien */}
+          <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/50 to-transparent" />
+          {/* Texto "Díaz Premium Envíos" en la parte superior de la imagen */}
+          <div className="absolute top-4 left-0 right-0 text-center">
+            <h1 className="text-white font-bold text-xl sm:text-3xl md:text-5xl drop-shadow-2xl tracking-wide">
+              Díaz Premium Envíos
+            </h1>
+          </div>
         </div>
 
         {/* ── Sección "Horario y Entregas" ── */}

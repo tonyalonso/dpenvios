@@ -403,10 +403,10 @@ function AuthForm({ mode, onBack, onSuccess }: AuthFormProps) {
             <Input
               id="email"
               type="email"
-              autoComplete="email"
+              autoComplete="new-email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="tucorreo@gmail.com"
+              placeholder="ejemplo@correo.com"
               required
             />
           </div>
@@ -417,6 +417,7 @@ function AuthForm({ mode, onBack, onSuccess }: AuthFormProps) {
             <Input
               id="password"
               type="password"
+              autoComplete={isRegister ? "new-password" : "current-password"}
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               placeholder={isRegister ? 'Mínimo 6 caracteres' : '••••••••'}

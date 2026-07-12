@@ -29,6 +29,7 @@ function HomeView() {
 
 function AppContent() {
   const currentView = useAppStore((s) => s.currentView);
+  const goBack = useAppStore((s) => s.goBack);
 
   // Rehydrate cart from localStorage after mount
   useEffect(() => {
@@ -51,6 +52,25 @@ function AppContent() {
     };
     requestAnimationFrame(rehydrate);
   }, []);
+
+  // ── Botón atrás del móvil ──
+  // Intercepta el evento popstate (botón físico atrás del navegador/móvil)
+  // y navega a la vista anterior en lugar de salir de la página.
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // Si no estamos en home, ir atrás dentro de la app
+      if (currentView !== 'home') {
+        e.preventDefault();
+        goBack();
+        // Empujar un estado vacío para que el botón atrás siga funcionando
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+    // Empujar estado inicial para que haya algo en el historial
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentView, goBack]);
 
   const renderView = () => {
     switch (currentView) {

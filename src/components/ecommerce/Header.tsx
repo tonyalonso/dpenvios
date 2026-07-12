@@ -13,6 +13,7 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [tickerItems, setTickerItems] = useState<string[]>([]);
+  const [logoUrl, setLogoUrl] = useState<string>('/logo-real.jpg');
   const cartItems = useCartStore((s) => s.items);
   const hydrated = useCartStore((s) => s._hydrated);
   const { setSearchQuery, setView } = useAppStore();
@@ -24,7 +25,7 @@ export function Header() {
     if (!customerHydrated) hydrateCustomer();
   }, [customerHydrated, hydrateCustomer]);
 
-  // Cargar los titulares del cintillo desde la API
+  // Cargar titulares y logo desde la API
   useEffect(() => {
     fetch('/api/siteconfig')
       .then((r) => r.json())
@@ -33,6 +34,7 @@ export function Header() {
           const items = JSON.parse(data.tickerItems || '[]');
           if (Array.isArray(items) && items.length > 0) setTickerItems(items);
         } catch { /* ignore */ }
+        if (data.logo) setLogoUrl(data.logo);
       })
       .catch(() => {});
   }, []);
@@ -65,7 +67,7 @@ export function Header() {
             className="flex items-center gap-2 cursor-pointer shrink-0"
             onClick={() => { setView('home'); setSearchQuery(''); setSearchValue(''); }}
           >
-            <img src="/logo-real.jpg" alt="Díaz Premium Envíos" className="w-10 h-10 rounded-xl object-cover" />
+            <img src={logoUrl} alt="Díaz Premium Envíos" className="w-10 h-10 rounded-xl object-cover" />
             <div>
               <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">Díaz Premium</h1>
               <p className="text-[10px] text-amber-600 font-semibold tracking-wider uppercase -mt-0.5">Envíos</p>

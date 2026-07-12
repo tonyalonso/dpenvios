@@ -15,11 +15,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Diaz Premium Envíos - Tu Tienda Premium de Envíos",
-  description: "Productos de alta calidad con entrega rápida y segura. Paga fácil con Zelle y recibe en la puerta de tu casa.",
+  description: "Productos de alta calidad con entrega rápida y segura. Paga fácil con Zelle y reciba en la puerta de su casa.",
   keywords: ["Diaz Premium", "Envíos", "E-commerce", "Zelle", "Tienda Online"],
   authors: [{ name: "Diaz Premium Envíos" }],
   icons: {
-    icon: "/logo.svg",
+    icon: "/favicon.png",
+    apple: "/favicon.png",
   },
 };
 

@@ -3635,6 +3635,8 @@ function OrdersTab() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [ticketOrder, setTicketOrder] = useState<Order | null>(null);
   const [store, setStore] = useState<SiteConfig | null>(null);
+  const [lastOrderCount, setLastOrderCount] = useState<number>(0);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // ── Filtros y buscador ──
   const [search, setSearch] = useState('');
@@ -3644,6 +3646,35 @@ function OrdersTab() {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
+  // ── Sonido de notificación de nuevo pedido ──
+  const playNotificationSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      // Tono 1
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.frequency.value = 880;
+      osc1.type = 'sine';
+      gain1.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc1.start(ctx.currentTime);
+      osc1.stop(ctx.currentTime + 0.3);
+      // Tono 2 (más agudo, 200ms después)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.frequency.value = 1320;
+      osc2.type = 'sine';
+      gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.2);
+      gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      osc2.start(ctx.currentTime + 0.2);
+      osc2.stop(ctx.currentTime + 0.5);
+    } catch { /* ignore */ }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -3651,16 +3682,42 @@ function OrdersTab() {
         fetch('/api/admin/orders'),
         fetch('/api/siteconfig'),
       ]);
-      setOrders(await oRes.json());
+      const newOrders = await oRes.json();
       setStore(await sRes.json());
+      // Detectar nuevos pedidos (solo si ya teníamos una carga previa)
+      if (lastOrderCount > 0 && newOrders.length > lastOrderCount && soundEnabled) {
+        playNotificationSound();
+      }
+      setOrders(newOrders);
+      setLastOrderCount(newOrders.length);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [lastOrderCount, soundEnabled, playNotificationSound]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Polling: revisar nuevos pedidos cada 30 segundos ──
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Sólo refrescar si no estamos en medio de un loading
+      if (!loading) {
+        fetch('/api/admin/orders')
+          .then((r) => r.json())
+          .then((newOrders) => {
+            if (lastOrderCount > 0 && newOrders.length > lastOrderCount && soundEnabled) {
+              playNotificationSound();
+            }
+            setOrders(newOrders);
+            setLastOrderCount(newOrders.length);
+          })
+          .catch(() => {});
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loading, lastOrderCount, soundEnabled, playNotificationSound]);
 
   // ── Aplicar filtros en cliente ──
   const filteredOrders = useMemo(() => {
@@ -3777,9 +3834,19 @@ function OrdersTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Pedidos</h2>
-        <Button variant="outline" onClick={fetchData}>
-          <RefreshCw className="h-4 w-4 mr-2" /> Actualizar
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            title={soundEnabled ? 'Silenciar notificaciones' : 'Activar notificaciones'}
+            className={soundEnabled ? 'text-emerald-600 border-emerald-300' : 'text-gray-400'}
+          >
+            {soundEnabled ? '🔊' : '🔇'}
+          </Button>
+          <Button variant="outline" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Actualizar
+          </Button>
+        </div>
       </div>
 
       {/* ── Barra de filtros y buscador ── */}
@@ -4311,7 +4378,48 @@ function SettingsTab() {
     <div className="space-y-6 max-w-3xl">
       <h2 className="text-2xl font-bold text-gray-900">Ajustes</h2>
 
-      {/* Store Info */}
+      {/* ═══ SECCIÓN 1: Imágenes del Negocio ═══ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ImagePlus className="h-5 w-5 text-amber-500" />
+            Imágenes del Negocio
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Logo */}
+          <div className="space-y-2">
+            <Label className="font-semibold">Logo del negocio</Label>
+            <div className="flex items-center gap-3">
+              <div className="h-16 w-16 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                {config.logo ? (
+                  <img src={config.logo} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-6 w-6 text-gray-300" />
+                )}
+              </div>
+              <Input value={config.logo} onChange={(e) => updateField('logo', e.target.value)} placeholder="/logo-real.jpg" className="flex-1" />
+            </div>
+          </div>
+          {/* Imagen principal (hero) */}
+          <div className="space-y-2">
+            <Label className="font-semibold">Imagen principal (hero)</Label>
+            <div className="flex items-center gap-3">
+              <div className="h-16 w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                {config.cover ? (
+                  <img src={config.cover} alt="Cover" className="w-full h-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-6 w-6 text-gray-300" />
+                )}
+              </div>
+              <Input value={config.cover} onChange={(e) => updateField('cover', e.target.value)} placeholder="/products/cover-real.jpg" className="flex-1" />
+            </div>
+            <p className="text-xs text-gray-500">Esta es la imagen grande que se ve en la página principal, debajo del cintillo.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ═══ SECCIÓN 2: Información de la Tienda ═══ */}
       <Card>
         <CardHeader>
           <CardTitle>Información de la Tienda</CardTitle>
@@ -4329,22 +4437,12 @@ function SettingsTab() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label>Logo URL</Label>
-              <Input value={config.logo} onChange={(e) => updateField('logo', e.target.value)} />
-            </div>
-            <div>
-              <Label>Cover URL</Label>
-              <Input value={config.cover} onChange={(e) => updateField('cover', e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
               <Label>Teléfono</Label>
               <Input value={config.phone} onChange={(e) => updateField('phone', e.target.value)} />
             </div>
             <div>
               <Label>WhatsApp (para pedidos)</Label>
-              <Input value={config.whatsappNumber} onChange={(e) => updateField('whatsappNumber', e.target.value)} placeholder="+5363169968" />
+              <Input value={config.whatsappNumber} onChange={(e) => updateField('whatsappNumber', e.target.value)} placeholder="+5350782825" />
               <p className="text-xs text-gray-500 mt-1">Se usará para enviar los pedidos por WhatsApp</p>
             </div>
           </div>
