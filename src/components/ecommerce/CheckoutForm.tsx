@@ -5,6 +5,7 @@ import { useCartStore } from '@/store/cart-store';
 import { useAppStore } from '@/store/app-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -31,6 +32,7 @@ interface DeliveryZone {
   estimatedTime: string;
   active: boolean;
   order: number;
+  allowsPriorityDelivery: boolean;
   asapSurchargeOverride: boolean;
   asapSurchargeType: string;
   asapSurchargeValue: number;
@@ -362,6 +364,22 @@ export function CheckoutForm() {
     }
   }, [isAsap, defaultNormalDate, formData.deliveryDate]);
 
+  // ── Reset a "normal" cuando la zona seleccionada NO permite entrega prioritaria ──
+  // Si el usuario tenía ASAP seleccionado y cambia a una zona sin prioridad,
+  // volvemos automáticamente a "normal" para evitar enviar un pedido ASAP a una
+  // zona que no lo soporta.
+  useEffect(() => {
+    if (!selectedZone) return;
+    if (!selectedZone.allowsPriorityDelivery && formData.deliveryTimeSlot === 'asap') {
+      setFormData((f) => ({
+        ...f,
+        deliveryTimeSlot: 'normal',
+        // Si ASAP forzó la fecha a hoy, restaurar a la fecha normal por defecto.
+        deliveryDate: f.deliveryDate === todayStr ? defaultNormalDate : f.deliveryDate,
+      }));
+    }
+  }, [selectedZone, formData.deliveryTimeSlot, todayStr, defaultNormalDate]);
+
   // Función central que envía el pedido al servidor.
   // `customerData` permite sobreescribir los datos de quien pide (caso samePerson).
   const submitOrder = async (customerData?: { name: string; email: string; phone: string }) => {
@@ -506,11 +524,14 @@ export function CheckoutForm() {
       return;
     }
     // Validación de horario de Cuba: si el cliente elige entrega HOY en modo
-    // Normal pero ya pasaron las 14:00, no se puede entregar hoy (sólo ASAP puede).
+    // Normal pero ya pasaron las 14:00, no se puede entregar hoy (sólo ASAP puede,
+    // si la zona lo permite).
     if (!isAsap && formData.deliveryDate === todayStr && !canDeliverToday) {
       toast({
         title: 'Entrega hoy no disponible',
-        description: 'Ya pasaron las 14:00 (hora Cuba) y no podemos entregar hoy en horario normal. Elige una fecha futura o selecciona "Lo antes posible" para entrega urgente.',
+        description: selectedZone?.allowsPriorityDelivery
+          ? 'Ya pasaron las 14:00 (hora Cuba) y no podemos entregar hoy en horario normal. Elige una fecha futura o selecciona "Lo antes posible" para entrega urgente.'
+          : 'Ya pasaron las 14:00 (hora Cuba) y no podemos entregar hoy en horario normal. Por favor elige una fecha futura. Esta zona no tiene habilitada la entrega prioritaria.',
         variant: 'destructive',
       });
       return;
@@ -586,7 +607,8 @@ export function CheckoutForm() {
     const dateLine = createdOrder.deliveryDate
       ? `\n*Entrega:* ${createdOrder.deliveryDate} · ${slotLabel}`
       : `\n*Entrega:* ${slotLabel}`;
-    const message = `*NUEVO PEDIDO* ${orderNumber}\n\n*Quien Pide:*\n${senderName}\n${senderEmail}\n${senderPhone}${sameNote}\n\n*Quien Recibe:*\n${createdOrder.recipientName}\n${createdOrder.recipientPhone}\n${createdOrder.recipientAddress}, ${createdOrder.recipientCity}${dateLine}\n${formData.recipientNotes ? `Notas: ${formData.recipientNotes}\n` : ''}\n*Productos:*\n${itemsText}\n\nEnvío: $${createdOrder.shippingCost.toFixed(2)}${surchargeLine}\n*Total: $${createdOrder.total.toFixed(2)}*\n\n_Pago se gestiona externamente_`;
+    const subtotal = createdOrder.items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const message = `*NUEVO PEDIDO* ${orderNumber}\n\n*Persona que Envía:*\n${senderName}\n${senderEmail}\n${senderPhone}${sameNote}\n\n*Persona que Recibe:*\n${createdOrder.recipientName}\n${createdOrder.recipientPhone}\n${createdOrder.recipientAddress}, ${createdOrder.recipientCity}${dateLine}\n${formData.recipientNotes ? `Notas: ${formData.recipientNotes}\n` : ''}\n*Productos:*\n${itemsText}\n\nSubtotal: $${subtotal.toFixed(2)}\nEnvío: $${createdOrder.shippingCost.toFixed(2)}${surchargeLine}\n*Total: $${createdOrder.total.toFixed(2)}*\n\n_Pago se gestiona externamente_`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
@@ -657,7 +679,7 @@ export function CheckoutForm() {
 
   // Orden de pasos: paso 1 = "Quien Recibe", paso 2 = "Quien Envía" (solo si samePerson es false)
   const stepIndex = step === 'recipient' ? 0 : 1;
-  const stepLabels = samePerson ? ['Quien Recibe'] : ['Quien Recibe', 'Quien Envía'];
+  const stepLabels = samePerson ? ['Persona que Recibe'] : ['Persona que Recibe', 'Persona que Envía'];
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -713,7 +735,7 @@ export function CheckoutForm() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-amber-500" />
-                  Datos de Quien Recibe
+                  Datos de la Persona que Recibe
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -864,13 +886,11 @@ export function CheckoutForm() {
                           <Label htmlFor="registerPassword" className="text-xs flex items-center gap-1.5">
                             <Lock className="h-3 w-3" /> Crea una contraseña (mínimo 6 caracteres)
                           </Label>
-                          <Input
+                          <PasswordInput
                             id="registerPassword"
-                            type="password"
                             value={registerPassword}
                             onChange={(e) => setRegisterPassword(e.target.value)}
                             placeholder="••••••••"
-                            minLength={6}
                           />
                           <p className="text-[11px] text-amber-700">
                             Crearemos tu cuenta al confirmar el pedido usando {samePerson ? 'tus datos de arriba' : 'los datos que ingreses en el siguiente paso'}.
@@ -991,7 +1011,10 @@ export function CheckoutForm() {
                     )}
                     {!isAsap && !canDeliverToday && (
                       <p className="text-[11px] text-gray-500">
-                        🕐 Como ya pasaron las 14:00 (hora Cuba), la entrega más pronto es <strong>mañana</strong>. Para entrega urgente hoy, elige "Lo antes posible".
+                        🕐 Como ya pasaron las 14:00 (hora Cuba), la entrega más pronto es <strong>mañana</strong>
+                        {selectedZone?.allowsPriorityDelivery
+                          ? '. Para entrega urgente hoy, elige "Lo antes posible".'
+                          : '.'}
                       </p>
                     )}
                     {isAsap && (
@@ -1005,7 +1028,7 @@ export function CheckoutForm() {
                       <Label className="text-base font-semibold">Horario de Entrega *</Label>
                     </div>
 
-                    <div className="grid sm:grid-cols-2 gap-3">
+                    <div className={`grid gap-3 ${selectedZone?.allowsPriorityDelivery ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
                       {/* Opción Normal */}
                       <label
                         className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-3.5 transition-all ${
@@ -1052,54 +1075,65 @@ export function CheckoutForm() {
                         </div>
                       </label>
 
-                      {/* Opción ASAP */}
-                      <label
-                        className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-3.5 transition-all ${
-                          formData.deliveryTimeSlot === 'asap'
-                            ? 'border-amber-500 bg-amber-50'
-                            : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/50'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="deliveryTimeSlot"
-                          value="asap"
-                          checked={formData.deliveryTimeSlot === 'asap'}
-                          onChange={() => setFormData({ ...formData, deliveryTimeSlot: 'asap', deliveryDate: todayStr })}
-                          className="mt-0.5 h-4 w-4 accent-amber-500"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
-                              <Zap className="h-3.5 w-3.5 text-amber-500" />
-                              Lo antes posible
+                      {/* Opción ASAP — solo si la zona seleccionada permite entrega prioritaria */}
+                      {selectedZone?.allowsPriorityDelivery ? (
+                        <label
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-3.5 transition-all ${
+                            formData.deliveryTimeSlot === 'asap'
+                              ? 'border-amber-500 bg-amber-50'
+                              : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="deliveryTimeSlot"
+                            value="asap"
+                            checked={formData.deliveryTimeSlot === 'asap'}
+                            onChange={() => setFormData({ ...formData, deliveryTimeSlot: 'asap', deliveryDate: todayStr })}
+                            className="mt-0.5 h-4 w-4 accent-amber-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                Lo antes posible
+                              </p>
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                                +${asapSurcharge.toFixed(2)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Entrega urgente hoy mismo, prioritaria
                             </p>
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                              +${asapSurcharge.toFixed(2)}
-                            </span>
+                            <p className="text-[11px] text-gray-600 mt-1">
+                              <span className="font-medium">Recargo:</span> ${asapSurcharge.toFixed(2)}{' '}
+                              <span className="text-gray-400">
+                                ({(() => {
+                                  let type = 'fixed';
+                                  let value = 0;
+                                  if (selectedZone?.asapSurchargeOverride) {
+                                    type = selectedZone.asapSurchargeType || 'fixed';
+                                    value = Number(selectedZone.asapSurchargeValue) || 0;
+                                  } else {
+                                    type = siteConfig?.asapSurchargeType || 'fixed';
+                                    value = Number(siteConfig?.asapSurchargeValue) || 0;
+                                  }
+                                  return type === 'percent' ? `${value}% del pedido` : `monto fijo`;
+                                })()})
+                              </span>
+                            </p>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Entrega urgente hoy mismo, prioritaria
-                          </p>
-                          <p className="text-[11px] text-gray-600 mt-1">
-                            <span className="font-medium">Recargo:</span> ${asapSurcharge.toFixed(2)}{' '}
-                            <span className="text-gray-400">
-                              ({(() => {
-                                let type = 'fixed';
-                                let value = 0;
-                                if (selectedZone?.asapSurchargeOverride) {
-                                  type = selectedZone.asapSurchargeType || 'fixed';
-                                  value = Number(selectedZone.asapSurchargeValue) || 0;
-                                } else {
-                                  type = siteConfig?.asapSurchargeType || 'fixed';
-                                  value = Number(siteConfig?.asapSurchargeValue) || 0;
-                                }
-                                return type === 'percent' ? `${value}% del pedido` : `monto fijo`;
-                              })()})
-                            </span>
-                          </p>
+                        </label>
+                      ) : (
+                        /* Mensaje informativo cuando la zona NO permite entrega prioritaria */
+                        <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-3.5 text-xs text-gray-500 flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                          <span>
+                            Esta zona no tiene habilitada la entrega prioritaria. Solo disponible
+                            entrega en horario normal.
+                          </span>
                         </div>
-                      </label>
+                      )}
                     </div>
                   </div>
 
@@ -1121,7 +1155,7 @@ export function CheckoutForm() {
                     ) : (
                       <>
                         <ArrowRight className="mr-2 h-5 w-5" />
-                        Continuar — Datos de Quien Envía
+                        Continuar — Datos de la Persona que Envía
                       </>
                     )}
                   </Button>
@@ -1136,7 +1170,7 @@ export function CheckoutForm() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <User className="h-5 w-5 text-amber-500" />
-                  Datos de Quien Envía (Pide)
+                  Datos de la Persona que Envía
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1211,13 +1245,11 @@ export function CheckoutForm() {
                           <Label htmlFor="registerPassword2" className="text-xs flex items-center gap-1.5">
                             <Lock className="h-3 w-3" /> Crea una contraseña (mínimo 6 caracteres)
                           </Label>
-                          <Input
+                          <PasswordInput
                             id="registerPassword2"
-                            type="password"
                             value={registerPassword}
                             onChange={(e) => setRegisterPassword(e.target.value)}
                             placeholder="••••••••"
-                            minLength={6}
                           />
                           <p className="text-[11px] text-amber-700">
                             Crearemos tu cuenta al confirmar el pedido usando los datos de arriba.

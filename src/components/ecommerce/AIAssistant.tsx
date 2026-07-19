@@ -1,214 +1,78 @@
 'use client';
 
-import { useState, useRef, useEffect, FormEvent } from 'react';
-import { MessageSquare, X, Send, Sparkles, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-const SUGGESTIONS = [
-  '¿Qué productos destacados tienen?',
-  '¿Cómo pago con Zelle?',
-  '¿Cuánto tarda el envío?',
-  'Recomiéndame un regalo',
-];
-
-const WELCOME: ChatMessage = {
-  role: 'assistant',
-  content:
-    '¡Hola! 👋 Soy Diaz IA, tu asistente de compras. Puedo ayudarte a encontrar productos, resolver dudas sobre envíos y pagos con Zelle. ¿En qué puedo ayudarte hoy?',
-};
-
+/**
+ * Botón flotante de WhatsApp.
+ * Reemplaza al chatbot anterior (Diaz IA) por un enlace directo a WhatsApp.
+ * El número se carga dinámicamente desde /api/siteconfig.
+ */
 export function AIAssistant() {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [whatsappNumber, setWhatsappNumber] = useState<string>('+5350782825');
+  const [storeName, setStoreName] = useState<string>('Díaz Premium Envíos');
+  const [showTooltip, setShowTooltip] = useState<boolean>(false);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, loading, open]);
+    fetch('/api/siteconfig')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.whatsappNumber) setWhatsappNumber(data.whatsappNumber);
+        if (data.storeName) setStoreName(data.storeName);
+      })
+      .catch(() => {});
+  }, []);
 
+  const phone = whatsappNumber.replace(/[^0-9]/g, '');
+  const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(`Hola ${storeName}, tengo una duda sobre un producto.`)}`;
+
+  // Mostrar tooltip después de 3 segundos
   useEffect(() => {
-    if (open) {
-      const t = setTimeout(() => inputRef.current?.focus(), 150);
-      return () => clearTimeout(t);
-    }
-  }, [open]);
-
-  async function send(messageText: string) {
-    const text = messageText.trim();
-    if (!text || loading) return;
-
-    setError(null);
-    const newMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
-    setMessages(newMessages);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/ai-assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: newMessages.slice(-7, -1).map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data?.error || 'Error desconocido');
-      }
-      setMessages((cur) => [...cur, { role: 'assistant', content: data.reply }]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error de conexión';
-      setError(msg);
-      setMessages((cur) => [
-        ...cur,
-        {
-          role: 'assistant',
-          content:
-            'Disculpa, tuve un problema técnico. Intenta nuevamente en unos segundos. 🙏',
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    void send(input);
-  }
+    const timer = setTimeout(() => setShowTooltip(true), 3000);
+    const hideTimer = setTimeout(() => setShowTooltip(false), 8000);
+    return () => { clearTimeout(timer); clearTimeout(hideTimer); };
+  }, []);
 
   return (
     <>
-      {/* Botón flotante */}
-      <button
-        type="button"
-        aria-label={open ? 'Cerrar asistente' : 'Abrir asistente IA'}
-        onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30 transition-transform hover:scale-105 active:scale-95"
-      >
-        {open ? <X className="h-6 w-6" /> : <MessageSquare className="h-6 w-6" />}
-        {!open && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
-          </span>
-        )}
-      </button>
-
-      {/* Panel del chat */}
-      {open && (
-        <div className="fixed bottom-24 right-5 z-50 flex h-[520px] max-h-[calc(100vh-7rem)] w-[calc(100vw-2.5rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          {/* Header */}
-          <div className="flex items-center gap-3 bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-white">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold leading-tight">Diaz IA</p>
-              <p className="text-[11px] text-amber-100 leading-tight truncate">
-                Powered by GLM-5.2 · Asistente de compras
-              </p>
-            </div>
-            <button
-              type="button"
-              aria-label="Cerrar"
-              onClick={() => setOpen(false)}
-              className="rounded-full p-1.5 hover:bg-white/20 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Mensajes */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto bg-gray-50 px-3 py-4 space-y-3"
+      {/* Tooltip */}
+      {showTooltip && (
+        <div className="fixed bottom-24 right-5 z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-3 max-w-[200px] animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <button
+            type="button"
+            onClick={() => setShowTooltip(false)}
+            className="absolute -top-2 -right-2 w-5 h-5 bg-gray-300 hover:bg-gray-400 rounded-full flex items-center justify-center text-white text-xs"
+            aria-label="Cerrar"
           >
-            {messages.map((m, i) => (
-              <Bubble key={i} role={m.role} content={m.content} />
-            ))}
-            {loading && (
-              <div className="flex items-center gap-2 text-xs text-gray-500 pl-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Diaz IA está escribiendo…
-              </div>
-            )}
-            {error && (
-              <p className="text-[11px] text-red-500 px-2">{error}</p>
-            )}
-          </div>
-
-          {/* Sugerencias */}
-          {messages.length <= 1 && (
-            <div className="flex flex-wrap gap-1.5 border-t border-gray-100 bg-white px-3 py-2.5">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => void send(s)}
-                  disabled={loading}
-                  className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Input */}
-          <form
-            onSubmit={handleSubmit}
-            className="flex items-center gap-2 border-t border-gray-200 bg-white p-3"
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribe tu mensaje…"
-              maxLength={1000}
-              disabled={loading}
-              className="flex-1 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 disabled:bg-gray-100"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || loading}
-              aria-label="Enviar"
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-500 text-white transition-transform hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </form>
+            ✕
+          </button>
+          <p className="text-xs text-gray-700 font-medium">
+            💬 ¿Tienes dudas? Escríbenos por WhatsApp
+          </p>
         </div>
       )}
-    </>
-  );
-}
 
-function Bubble({ role, content }: { role: 'user' | 'assistant'; content: string }) {
-  const isUser = role === 'user';
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
-          isUser
-            ? 'rounded-br-sm bg-gradient-to-br from-amber-500 to-orange-500 text-white'
-            : 'rounded-bl-sm bg-white text-gray-800 border border-gray-100'
-        }`}
+      {/* Botón flotante de WhatsApp */}
+      <a
+        href={whatsappUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Escribir por WhatsApp"
+        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg shadow-green-500/30 transition-transform hover:scale-110 active:scale-95"
       >
-        {content}
-      </div>
-    </div>
+        {/* Icono de WhatsApp SVG */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className="h-7 w-7"
+        >
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.885-9.885 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.359.101 11.892c0 2.096.549 4.142 1.595 5.945L0 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.582 0 11.94-5.359 11.944-11.892a11.821 11.821 0 00-3.495-8.413z"/>
+        </svg>
+        <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-300 opacity-75" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-green-400" />
+        </span>
+      </a>
+    </>
   );
 }

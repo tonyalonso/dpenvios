@@ -229,9 +229,9 @@ export function OrderTicket({ order, open, onOpenChange, onTogglePaid, store }: 
             </div>
           </div>
 
-          {/* Datos de quien pide */}
+          {/* Datos de quien envía */}
           <div className="mb-2 pb-2 border-b border-dashed border-gray-400">
-            <div className="font-bold mb-1">QUIEN PIDE:</div>
+            <div className="font-bold mb-1">PERSONA QUE ENVÍA:</div>
             <div>{order.customerName}</div>
             <div>{order.customerPhone}</div>
             {order.customerEmail && <div>{order.customerEmail}</div>}
@@ -239,7 +239,7 @@ export function OrderTicket({ order, open, onOpenChange, onTogglePaid, store }: 
 
           {/* Datos de quien recibe */}
           <div className="mb-2 pb-2 border-b border-dashed border-gray-400">
-            <div className="font-bold mb-1">QUIEN RECIBE:</div>
+            <div className="font-bold mb-1">PERSONA QUE RECIBE:</div>
             <div>{order.recipientName || '—'}</div>
             <div>{order.recipientPhone || '—'}</div>
             <div>{order.recipientAddress}{order.recipientCity ? `, ${order.recipientCity}` : ''}</div>

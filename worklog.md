@@ -2895,3 +2895,247 @@ Defaults añadidos a `SEED_SITE_CONFIG` y `db.siteConfig` defaults.
 - `bun run lint` — 0 errors, 6 warnings (the same 6 pre-existing).
 - `GET /` → 200.
 - `GET /api/siteconfig` → 200 con todos los campos nuevos.
+
+## 2026-07-19 — Task PROD-FIX-34: Bug crítico — /api/siteconfig devolvía 404
+
+### Síntoma reportado por el usuario
+> "en el admin/configuración la mayoría de campos están vacíos sin embargo
+> la página de inicio se ve con todo, ejemplo no hay países marcados en
+> el admin y en la página dice cuba y eeuu para compras revisa
+> funcionalidad real."
+
+### Causa raíz
+Bug en `maybeRefreshFromDisk()` en `src/lib/store.ts`. La función lee
+el archivo de cada modelo como `readJson<T[]>` (asumiendo que TODOS los
+archivos son arrays). Pero `siteconfig.json` es un **objeto único**, no
+un array.
+
+Flujo del bug (en dev mode con Turbopack, cada ruta tiene su propia
+instancia del store):
+1. Ruta A (admin PUT `/api/siteconfig`) escribe el archivo. mtime = T1.
+   Marca `lastReadByFile['siteconfig.json'] = Date.now()` ≈ T1.
+2. Ruta B (GET `/api/siteconfig`) tiene su propia instancia. Su
+   `lastReadByFile['siteconfig.json']` todavía es T0 (más viejo).
+3. Ruta B llama `maybeRefreshFromDisk()`. Como `mtime (T1) > lastRead (T0)`,
+   releo el archivo. `readJson<T[]>` devuelve el objeto único (no array).
+4. `setCollection(fresh)` para siteConfig hace:
+   `state.siteConfig = (items[0] as unknown as SiteConfig) ?? null`.
+   Pero `items` es el objeto (no array), `items[0]` es `undefined`,
+   entonces `state.siteConfig = null`.
+5. `findUnique({where: {id: 'site'}})` recorre `getCollection()` que
+   ahora es `[]` (porque siteConfig es null). No encuentra nada.
+6. API devuelve `{error: "Site config not found"}` con status 404.
+
+Por eso el admin (que cargaba el body del 404 como si fuera SiteConfig)
+mostraba todos los campos vacíos, pero la homepage funcionaba porque
+tiene fallbacks hardcoded (`config?.activeCountries || 'US,CU'`).
+
+### Fix aplicado
+
+**1. `src/lib/store.ts` — `maybeRefreshFromDisk()`:**
+Caso especial para siteConfig: leer como objeto único y asignar
+directamente, no como array.
+
+```ts
+if (model === 'siteConfig') {
+  const fresh = await readJson<SiteConfig>(fileName);
+  if (fresh) {
+    state.siteConfig = fresh;
+  }
+} else {
+  const fresh = await readJson<T[]>(fileName);
+  if (fresh) {
+    setCollection(fresh);
+  }
+}
+```
+
+**2. `src/lib/store.ts` — `setCollection()` para siteConfig:**
+Defensivo: acepta tanto array `[obj]` como objeto único `obj`.
+
+```ts
+case 'siteConfig':
+  state.siteConfig = (Array.isArray(items)
+    ? (items[0] as unknown as SiteConfig)
+    : (items as unknown as SiteConfig)) ?? null;
+  break;
+```
+
+**3. `src/components/ecommerce/AdminPanel.tsx` — `SettingsTab`:**
+- Ya no acepta un objeto de error como si fuera SiteConfig. Verifica
+  `res.ok && !data.error && data.id` antes de hacer `setConfig`.
+- Si la API falla, muestra un mensaje claro con botón "Reintentar"
+  en vez de spinner infinito o formulario vacío.
+
+**4. `src/components/ecommerce/AdminPanel.tsx` — OrdersTab:**
+- Igual: el fetch de `/api/siteconfig` en `fetchData()` ahora valida
+  `sData && !sData.error && sData.id` antes de hacer `setStore`.
+
+### Verificación end-to-end
+
+**API estabilidad (5 llamadas consecutivas):**
+```
+id: site | activeCountries: US,CU | storeName: Díaz Premium Envíos
+```
+— Todas devuelven el mismo objeto (antes del fix, la 2da ya era 404).
+
+**POST/PUT + GET (lo que antes rompía el estado):**
+```
+PUT activeCountries=US,CU,ES → 200
+GET → activeCountries: US,CU,ES  ✓ (antes del fix aquí devolvía 404)
+```
+
+**Admin panel:**
+- Login → Ajustes → todos los campos cargados:
+  - tagline, phone, whatsapp, address, zelleEmail, etc.
+  - Checkboxes de países: US y CU marcados ✓
+  - Testimonios (3), redes sociales (3), trust badges (4) todos
+    cargados con sus valores reales.
+- Toggle España → Guardar → API persiste `US,CU,ES` ✓
+- Homepage muestra 3 banderas (US, CU, ES) ✓
+- Formulario de registro muestra 3 opciones (US, CU, ES) ✓
+
+### Lint / Build
+- `bun run lint` — 0 errors, 6 warnings (las mismas 6 pre-existentes).
+- `GET /` → 200.
+- `GET /api/siteconfig` → 200 con todos los campos.
+
+## 2026-07-19 — Task PROD-FIX-35: Entrega Prioritaria dinámica + iconos reales
+
+### Resumen
+1. **Iconos reales de redes sociales** en el footer (WhatsApp, Facebook,
+   Instagram, Telegram, TikTok, Twitter/X, YouTube) — SVG en línea en vez
+   de la primera letra del nombre.
+2. **Nuevo campo `allowsPriorityDelivery` en `DeliveryZone`** — el admin
+   decide zona por zona si permite entrega prioritaria.
+3. **Modal informativo "Entrega Prioritaria"** en el home — reemplaza al
+   botón "Solicitar envío urgente" que iba directo al catálogo. Muestra
+   dinámicamente: cómo funciona, horario normal (de SiteConfig), zonas
+   disponibles (solo las que tienen `allowsPriorityDelivery: true`), y
+   recargo por zona (override o global). Si no hay zonas con prioridad,
+   muestra mensaje y CTA de WhatsApp.
+4. **Checkout condicional**: la opción "Lo antes posible" solo aparece
+   cuando la zona seleccionada tiene `allowsPriorityDelivery: true`. Si
+   el usuario cambia a una zona sin prioridad estando en ASAP, se resetea
+   automáticamente a "normal".
+
+### Schema (`src/lib/store.ts`)
+- Añadido `allowsPriorityDelivery: boolean` a la interfaz `DeliveryZone`.
+- Actualizados `SEED_DELIVERY_ZONES` (Ciego de Ávila = true, otras = false).
+- Actualizado el `defaults` del repositorio `deliveryZone`.
+- Migración de `data/delivery-zones.json` con script Python para añadir
+  el campo a registros existentes.
+
+### API (`src/app/api/admin/delivery-zones/`)
+- `route.ts` (POST): acepta `allowsPriorityDelivery` (default false).
+- `[id]/route.ts` (PUT): acepta `allowsPriorityDelivery` como boolean.
+
+### Admin (`src/components/ecommerce/AdminPanel.tsx`)
+- Interfaz `DeliveryZone` actualizada con `allowsPriorityDelivery`.
+- `blankForm` incluye el nuevo campo.
+- `handleSave` envía `allowsPriorityDelivery` en el payload.
+- **Tabla de zonas**: nueva columna "Prioritaria" con badge
+  clicable `⚡ Sí` / `— No` que toggle directo vía PUT.
+- **Editor de zona**: nuevo checkbox "⚡ Permite entrega prioritaria"
+  con explicación de comportamiento.
+
+### Componentes nuevos
+
+**`src/components/ecommerce/SocialIcons.tsx`** — Iconos SVG reales:
+- `WhatsAppIcon`, `FacebookIcon`, `InstagramIcon`, `TelegramIcon`,
+  `TikTokIcon`, `TwitterIcon` (X), `YouTubeIcon`, `GlobeIcon` (fallback).
+- `SOCIAL_ICON_MAP` mapea nombres del admin (`whatsapp`, `facebook`,
+  etc.) a componentes.
+- `<SocialIcon platform="whatsapp" />` renderiza el SVG correspondiente.
+
+**`src/components/ecommerce/PriorityDeliveryModal.tsx`** — Modal que:
+- Carga dinámicamente `/api/delivery-zones` y `/api/siteconfig` al abrir.
+- Filtra solo `z.active && z.allowsPriorityDelivery`.
+- Muestra "¿Cómo funciona?" con `normalSchedule` del SiteConfig.
+- Lista cada zona con su nombre, descripción, tiempo estimado, precio
+  base y recargo prioritario (override o global, label legible).
+- Si no hay zonas con prioridad: mensaje + botón WhatsApp (si existe).
+- CTA "Hacer un pedido" → cierra modal y va al catálogo (solo si hay
+  zonas disponibles).
+
+### HeroBanner (`src/components/ecommerce/HeroBanner.tsx`)
+- Import `PriorityDeliveryModal`.
+- Nuevo estado `priorityModalOpen`.
+- Botón "Ver entrega prioritaria" (antes "Solicitar envío urgente")
+  ahora abre el modal en vez de ir al catálogo.
+- `<PriorityDeliveryModal>` renderizado al final del componente.
+
+### Footer (`src/components/ecommerce/Footer.tsx`)
+- Import `SocialIcon`.
+- Reemplazado `{social.platform.charAt(0)}` por `<SocialIcon platform={iconName} />`.
+- Iconos ahora heredan `currentColor` (gris por defecto, blanco en hover
+  amber-500).
+
+### ZoneSelector (`src/components/ecommerce/ZoneSelector.tsx`)
+- Interfaz `DeliveryZone` con `allowsPriorityDelivery?`.
+- Cada item del dropdown ahora muestra badge "⚡ Prioritaria" si la
+  zona lo permite (junto al tiempo estimado).
+
+### CheckoutForm (`src/components/ecommerce/CheckoutForm.tsx`)
+- Interfaz `DeliveryZone` con `allowsPriorityDelivery`.
+- Nuevo useEffect que resetea `deliveryTimeSlot` a `'normal'` cuando la
+  zona seleccionada no permite prioridad y el usuario estaba en ASAP.
+- Opción "Lo antes posible" ahora se renderiza condicionalmente:
+  `{selectedZone?.allowsPriorityDelivery ? (<label>ASAP</label>) : (<div>mensaje informativo</div>)}`.
+- Grid del horario de entrega: 2 columnas si hay ASAP, 1 columna si no.
+- Mensaje "Para entrega urgente hoy, elige Lo antes posible" ahora
+  solo aparece si la zona soporta prioridad.
+- Toast de validación "Ya pasaron las 14:00" ahora tiene 2 variantes
+  según si la zona soporta ASAP o no.
+
+### Verificación end-to-end
+
+**API:**
+- `GET /api/delivery-zones` devuelve `allowsPriorityDelivery` en cada zona.
+- `PUT /api/admin/delivery-zones/[id]` con `{"allowsPriorityDelivery":true}`
+  persiste correctamente y devuelve la zona actualizada.
+
+**Modal en el home:**
+- Botón "Ver entrega prioritaria" abre modal.
+- Modal muestra título "Entrega Prioritaria", sección "¿Cómo funciona?",
+  sección "Zonas donde está disponible".
+- Solo muestra Ciego de Ávila (Ciudad) — la única con priority=true.
+- Después de activar priority en Provincia desde el admin, recargando el
+  modal muestra ambas zonas.
+
+**Admin Delivery tab:**
+- Columna "Prioritaria" en la tabla con badges "⚡ Sí" / "— No".
+- Click en badge alterna vía PUT.
+- Editor de zona tiene checkbox "⚡ Permite entrega prioritaria".
+- Guardar propaga el cambio.
+
+**Checkout:**
+- Zona Ciego de Ávila (Ciudad): aparecen 2 opciones (Normal + ASAP).
+- Zona Provincia: aparece 1 opción (Normal) + mensaje "Esta zona no
+  tiene habilitada la entrega prioritaria".
+- Cambiar de Ciego → Provincia con ASAP seleccionado: resetea a Normal.
+
+**Footer:**
+- Iconos SVG reales (WhatsApp, Facebook, Instagram) en vez de letras.
+- Verificado vía `svg path` en el DOM.
+
+### Lint / Build
+- `bun run lint` — 0 errors, 6 warnings (las mismas 6 pre-existentes).
+- `GET /` → 200.
+- `GET /api/delivery-zones` → 200 con `allowsPriorityDelivery`.
+- `GET /api/siteconfig` → 200.
+
+### Archivos modificados
+- `src/lib/store.ts` (schema + seeds + defaults)
+- `data/delivery-zones.json` (migración)
+- `src/app/api/admin/delivery-zones/route.ts`
+- `src/app/api/admin/delivery-zones/[id]/route.ts`
+- `src/components/ecommerce/AdminPanel.tsx`
+- `src/components/ecommerce/HeroBanner.tsx`
+- `src/components/ecommerce/Footer.tsx`
+- `src/components/ecommerce/ZoneSelector.tsx`
+- `src/components/ecommerce/CheckoutForm.tsx`
+
+### Archivos nuevos
+- `src/components/ecommerce/SocialIcons.tsx`
+- `src/components/ecommerce/PriorityDeliveryModal.tsx`

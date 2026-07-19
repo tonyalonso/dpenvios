@@ -25,6 +25,7 @@ export async function PUT(request: Request) {
       'scheduleViernes', 'scheduleSabado', 'scheduleDomingo',
       'asapSurchargeType', 'asapSurchargeValue', 'normalSchedule', 'activeCountries',
       'tickerItems', 'horarioSectionTitle', 'horarioSectionDesc', 'horarioCards',
+      'socialLinks', 'trustBadges', 'socialStats', 'testimonials', 'homeBenefits',
     ];
     const data: Record<string, unknown> = {};
     for (const key of allowedFields) {

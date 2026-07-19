@@ -329,9 +329,18 @@ export interface SiteConfig {
   horarioSectionTitle: string;
   /** Descripción de la sección "Horario y Entregas". */
   horarioSectionDesc: string;
-  /** Cards de la sección horario. JSON string de array de objetos:
-   *  { icon, title, description, color } donde color es 'blue'|'emerald'|'purple'. */
+  /** Cards de la sección horario. JSON string de array de objetos. */
   horarioCards: string;
+  /** Redes sociales. JSON string de array: { platform, url, icon, visible }. */
+  socialLinks: string;
+  /** Elementos de confianza del footer. JSON string de array: { icon, text, visible }. */
+  trustBadges: string;
+  /** Estadísticas de prueba social. JSON string de array: { value, label }. */
+  socialStats: string;
+  /** Testimonios. JSON string de array: { name, location, text, rating }. */
+  testimonials: string;
+  /** Beneficios de la banda de confianza. JSON string de array: { icon, title, desc, color, bg }. */
+  homeBenefits: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -347,6 +356,11 @@ export interface DeliveryZone {
   active: boolean;
   /** Orden de visualización (asc). */
   order: number;
+  /**
+   * Si la zona permite entrega prioritaria ("Lo antes posible" / ASAP).
+   * Cuando es false, la opción ASAP no se muestra en el checkout para esta zona.
+   */
+  allowsPriorityDelivery: boolean;
   /**
    * Override opcional del recargo ASAP para esta zona.
    * Si `asapSurchargeOverride` es true, se usan asapSurchargeType/asapSurchargeValue;
@@ -702,6 +716,36 @@ const SEED_SITE_CONFIG: SiteConfig = {
     { icon: '🚚', title: 'Entregas de 3:00 pm a 6:00 pm', description: 'Horario normal de entrega en Cuba, todos los días. Recíbelo cómodamente en tu casa.', color: 'emerald' },
     { icon: '⚡', title: 'Envío rápido opcional', description: '¿Necesitas urgencia? Solicita entrega prioritaria por un costo adicional y recíbelo antes.', color: 'purple' },
   ]),
+  socialLinks: JSON.stringify([
+    { platform: 'WhatsApp', url: 'https://wa.me/5350782825', icon: 'whatsapp', visible: true },
+    { platform: 'Facebook', url: '#', icon: 'facebook', visible: true },
+    { platform: 'Instagram', url: '#', icon: 'instagram', visible: true },
+    { platform: 'Telegram', url: '#', icon: 'telegram', visible: false },
+    { platform: 'TikTok', url: '#', icon: 'tiktok', visible: false },
+  ]),
+  trustBadges: JSON.stringify([
+    { icon: '🔒', text: 'Pago seguro con Zelle', visible: true },
+    { icon: '🛡️', text: 'Datos protegidos', visible: true },
+    { icon: '🚚', text: 'Entrega garantizada', visible: true },
+    { icon: '🌎', text: 'Compra desde cualquier país', visible: true },
+  ]),
+  socialStats: JSON.stringify([
+    { value: '2,500+', label: 'Pedidos entregados' },
+    { value: '800+', label: 'Clientes satisfechos' },
+    { value: 'Diarias', label: 'Entregas en Ciego de Ávila' },
+    { value: '100%', label: 'Servicio confiable' },
+  ]),
+  testimonials: JSON.stringify([
+    { name: 'María González', location: 'Miami, USA', text: 'Pude enviarle alimentos a mi mamá en Ciego de Ávila de forma rapidísima. El servicio es excelente y muy confiable.', rating: 5 },
+    { name: 'Carlos Pérez', location: 'Madrid, España', text: 'La mejor opción para enviar a Cuba. Los productos llegaron en perfectas condiciones y el pago fue muy fácil.', rating: 5 },
+    { name: 'Ana Rodríguez', location: 'Ciego de Ávila, Cuba', text: 'Recibí todo en la puerta de mi casa. La atención fue excelente y los productos de muy buena calidad.', rating: 5 },
+  ]),
+  homeBenefits: JSON.stringify([
+    { icon: 'shield', title: 'Pago seguro', desc: 'Tus transacciones protegidas', color: 'text-green-600', bg: 'bg-green-50' },
+    { icon: 'truck', title: 'Entrega garantizada', desc: 'Llegamos a tu puerta', color: 'text-blue-600', bg: 'bg-blue-50' },
+    { icon: 'globe', title: 'Compra desde cualquier país', desc: 'Entregamos en Cuba', color: 'text-amber-600', bg: 'bg-amber-50' },
+    { icon: 'heart', title: 'Atención personalizada', desc: 'Estamos para ayudarte', color: 'text-rose-600', bg: 'bg-rose-50' },
+  ]),
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
 };
@@ -871,6 +915,7 @@ const SEED_DELIVERY_ZONES: DeliveryZone[] = [
     estimatedTime: 'Mismo día',
     active: true,
     order: 0,
+    allowsPriorityDelivery: true,
     asapSurchargeOverride: false,
     asapSurchargeType: 'fixed',
     asapSurchargeValue: 0,
@@ -885,6 +930,7 @@ const SEED_DELIVERY_ZONES: DeliveryZone[] = [
     estimatedTime: '1-2 días',
     active: true,
     order: 1,
+    allowsPriorityDelivery: false,
     asapSurchargeOverride: false,
     asapSurchargeType: 'fixed',
     asapSurchargeValue: 0,
@@ -899,6 +945,7 @@ const SEED_DELIVERY_ZONES: DeliveryZone[] = [
     estimatedTime: '2-3 días',
     active: true,
     order: 2,
+    allowsPriorityDelivery: false,
     asapSurchargeOverride: false,
     asapSurchargeType: 'fixed',
     asapSurchargeValue: 0,
@@ -1156,7 +1203,11 @@ function createRepository<T>(
         state.admins = items as unknown as Admin[];
         break;
       case 'siteConfig':
-        state.siteConfig = (items[0] as unknown as SiteConfig) ?? null;
+        // siteConfig se guarda como objeto único en disco, pero otros
+        // callers pueden pasar un array. Aceptamos ambos.
+        state.siteConfig = (Array.isArray(items)
+          ? (items[0] as unknown as SiteConfig)
+          : (items as unknown as SiteConfig)) ?? null;
         break;
       case 'deliveryZone':
         state.deliveryZones = items as unknown as DeliveryZone[];
@@ -1206,9 +1257,18 @@ function createRepository<T>(
         const lastRead = lastReadByFile[fileName] || 0;
         if (mtime > lastRead) {
           lastReadByFile[fileName] = mtime;
-          const fresh = await readJson<T[]>(fileName);
-          if (fresh) {
-            setCollection(fresh);
+          // siteConfig se guarda como objeto único, no como array.
+          // Los demás modelos sí son arrays.
+          if (model === 'siteConfig') {
+            const fresh = await readJson<SiteConfig>(fileName);
+            if (fresh) {
+              state.siteConfig = fresh;
+            }
+          } else {
+            const fresh = await readJson<T[]>(fileName);
+            if (fresh) {
+              setCollection(fresh);
+            }
           }
         }
       } catch {
@@ -1544,6 +1604,34 @@ export const db = {
       { icon: '🚚', title: 'Entregas de 3:00 pm a 6:00 pm', description: 'Horario normal de entrega en Cuba, todos los días. Recíbelo cómodamente en tu casa.', color: 'emerald' },
       { icon: '⚡', title: 'Envío rápido opcional', description: '¿Necesitas urgencia? Solicita entrega prioritaria por un costo adicional y recíbelo antes.', color: 'purple' },
     ]),
+    socialLinks: JSON.stringify([
+      { platform: 'WhatsApp', url: 'https://wa.me/5350782825', icon: 'whatsapp', visible: true },
+      { platform: 'Facebook', url: '#', icon: 'facebook', visible: true },
+      { platform: 'Instagram', url: '#', icon: 'instagram', visible: true },
+    ]),
+    trustBadges: JSON.stringify([
+      { icon: '🔒', text: 'Pago seguro con Zelle', visible: true },
+      { icon: '🛡️', text: 'Datos protegidos', visible: true },
+      { icon: '🚚', text: 'Entrega garantizada', visible: true },
+      { icon: '🌎', text: 'Compra desde cualquier país', visible: true },
+    ]),
+    socialStats: JSON.stringify([
+      { value: '2,500+', label: 'Pedidos entregados' },
+      { value: '800+', label: 'Clientes satisfechos' },
+      { value: 'Diarias', label: 'Entregas en Ciego de Ávila' },
+      { value: '100%', label: 'Servicio confiable' },
+    ]),
+    testimonials: JSON.stringify([
+      { name: 'María González', location: 'Miami, USA', text: 'Pude enviarle alimentos a mi mamá en Ciego de Ávila de forma rapidísima. El servicio es excelente y muy confiable.', rating: 5 },
+      { name: 'Carlos Pérez', location: 'Madrid, España', text: 'La mejor opción para enviar a Cuba. Los productos llegaron en perfectas condiciones y el pago fue muy fácil.', rating: 5 },
+      { name: 'Ana Rodríguez', location: 'Ciego de Ávila, Cuba', text: 'Recibí todo en la puerta de mi casa. La atención fue excelente y los productos de muy buena calidad.', rating: 5 },
+    ]),
+    homeBenefits: JSON.stringify([
+      { icon: 'shield', title: 'Pago seguro', desc: 'Tus transacciones protegidas', color: 'text-green-600', bg: 'bg-green-50' },
+      { icon: 'truck', title: 'Entrega garantizada', desc: 'Llegamos a tu puerta', color: 'text-blue-600', bg: 'bg-blue-50' },
+      { icon: 'globe', title: 'Compra desde cualquier país', desc: 'Entregamos en Cuba', color: 'text-amber-600', bg: 'bg-amber-50' },
+      { icon: 'heart', title: 'Atención personalizada', desc: 'Estamos para ayudarte', color: 'text-rose-600', bg: 'bg-rose-50' },
+    ]),
   } as Partial<SiteConfig>, 'site'),
   deliveryZone: createRepository<DeliveryZone>('deliveryZone', {
     description: '',
@@ -1551,6 +1639,7 @@ export const db = {
     estimatedTime: 'Mismo día',
     active: true,
     order: 0,
+    allowsPriorityDelivery: false,
     asapSurchargeOverride: false,
     asapSurchargeType: 'fixed',
     asapSurchargeValue: 0,

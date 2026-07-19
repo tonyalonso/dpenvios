@@ -92,6 +92,7 @@ import {
 } from 'lucide-react';
 import { OrderTicket } from '@/components/ecommerce/OrderTicket';
 import { CountryFlag, COUNTRY_INFO } from '@/components/ecommerce/CountryFlag';
+import { PasswordInput } from '@/components/ui/password-input';
 import { optimizeImage } from '@/lib/image-upload';
 
 const ADMIN_TOKEN_KEY = 'diaz-admin-token';
@@ -288,6 +289,11 @@ interface SiteConfig {
   horarioSectionTitle: string;
   horarioSectionDesc: string;
   horarioCards: string;
+  socialLinks: string;
+  trustBadges: string;
+  socialStats: string;
+  testimonials: string;
+  homeBenefits: string;
 }
 
 // Status badge helper
@@ -3637,6 +3643,7 @@ function OrdersTab() {
   const [store, setStore] = useState<SiteConfig | null>(null);
   const [lastOrderCount, setLastOrderCount] = useState<number>(0);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
   // ── Filtros y buscador ──
   const [search, setSearch] = useState('');
@@ -3646,32 +3653,31 @@ function OrdersTab() {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
-  // ── Sonido de notificación de nuevo pedido ──
+  // ── Sonido de notificación de nuevo pedido (más prolongado) ──
   const playNotificationSound = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      // Tono 1
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.frequency.value = 880;
-      osc1.type = 'sine';
-      gain1.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-      osc1.start(ctx.currentTime);
-      osc1.stop(ctx.currentTime + 0.3);
-      // Tono 2 (más agudo, 200ms después)
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.frequency.value = 1320;
-      osc2.type = 'sine';
-      gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.2);
-      gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-      osc2.start(ctx.currentTime + 0.2);
-      osc2.stop(ctx.currentTime + 0.5);
+      // Secuencia de 3 tonos ascendentes repetida 2 veces (más notoria)
+      const notes = [
+        { freq: 660, start: 0,    dur: 0.15 },
+        { freq: 880, start: 0.15, dur: 0.15 },
+        { freq: 1320, start: 0.3, dur: 0.25 },
+        { freq: 660, start: 0.65, dur: 0.15 },
+        { freq: 880, start: 0.8, dur: 0.15 },
+        { freq: 1320, start: 0.95, dur: 0.35 },
+      ];
+      for (const n of notes) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = n.freq;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + n.start);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + n.start + n.dur);
+        osc.start(ctx.currentTime + n.start);
+        osc.stop(ctx.currentTime + n.start + n.dur);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -3683,10 +3689,18 @@ function OrdersTab() {
         fetch('/api/siteconfig'),
       ]);
       const newOrders = await oRes.json();
-      setStore(await sRes.json());
+      const sData = await sRes.json();
+      // Solo aceptar config válido (no objeto de error)
+      if (sData && !sData.error && sData.id) {
+        setStore(sData as SiteConfig);
+      }
       // Detectar nuevos pedidos (solo si ya teníamos una carga previa)
       if (lastOrderCount > 0 && newOrders.length > lastOrderCount && soundEnabled) {
         playNotificationSound();
+        // Mostrar notificación emergente con el pedido más reciente
+        const newest = newOrders[0];
+        setNewOrderAlert(`¡Nuevo pedido! #${newest.orderNumber} — ${newest.customerName} — $${newest.total.toFixed(2)}`);
+        setTimeout(() => setNewOrderAlert(null), 10000);
       }
       setOrders(newOrders);
       setLastOrderCount(newOrders.length);
@@ -3702,13 +3716,15 @@ function OrdersTab() {
   // ── Polling: revisar nuevos pedidos cada 30 segundos ──
   useEffect(() => {
     const interval = setInterval(() => {
-      // Sólo refrescar si no estamos en medio de un loading
       if (!loading) {
         fetch('/api/admin/orders')
           .then((r) => r.json())
           .then((newOrders) => {
             if (lastOrderCount > 0 && newOrders.length > lastOrderCount && soundEnabled) {
               playNotificationSound();
+              const newest = newOrders[0];
+              setNewOrderAlert(`¡Nuevo pedido! #${newest.orderNumber} — ${newest.customerName} — $${newest.total.toFixed(2)}`);
+              setTimeout(() => setNewOrderAlert(null), 10000);
             }
             setOrders(newOrders);
             setLastOrderCount(newOrders.length);
@@ -3832,6 +3848,27 @@ function OrdersTab() {
 
   return (
     <div className="space-y-4">
+      {/* ── Notificación emergente de nuevo pedido ── */}
+      {newOrderAlert && (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-500 text-white rounded-xl shadow-2xl p-4 max-w-sm animate-bounce">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">🛒</span>
+            <div className="flex-1">
+              <p className="font-bold">{newOrderAlert}</p>
+              <p className="text-xs text-emerald-100 mt-1">Revisa la tabla de pedidos para ver los detalles.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNewOrderAlert(null)}
+              className="text-white/80 hover:text-white shrink-0"
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Pedidos</h2>
         <div className="flex gap-2">
@@ -4313,6 +4350,210 @@ function HorarioCardsEditor({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
+// ─── Editor genérico para arrays JSON administrables ───
+function JsonArrayEditor<T extends Record<string, unknown>>({
+  value,
+  onChange,
+  fields,
+  itemName,
+  newItem,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  fields: { key: string; label: string; type?: 'text' | 'number' | 'textarea' | 'select'; options?: string[] }[];
+  itemName: string;
+  newItem: T;
+}) {
+  const items = (() => {
+    try { const p = JSON.parse(value || '[]'); return Array.isArray(p) ? p as T[] : []; } catch { return []; }
+  })();
+
+  const updateItem = (idx: number, patch: Partial<T>) => {
+    const next = items.map((it, i) => i === idx ? { ...it, ...patch } : it);
+    onChange(JSON.stringify(next));
+  };
+
+  const removeItem = (idx: number) => {
+    onChange(JSON.stringify(items.filter((_, i) => i !== idx)));
+  };
+
+  const addItem = () => {
+    onChange(JSON.stringify([...items, { ...newItem }]));
+  };
+
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= items.length) return;
+    const next = [...items];
+    [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
+    onChange(JSON.stringify(next));
+  };
+
+  return (
+    <div className="space-y-3">
+      {items.map((item, idx) => (
+        <div key={idx} className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500">{itemName} {idx + 1}</span>
+            <div className="flex gap-1">
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => removeItem(idx)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {fields.map((f) => (
+              <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                <Label className="text-[11px] text-gray-500">{f.label}</Label>
+                {f.type === 'textarea' ? (
+                  <Textarea
+                    value={String(item[f.key] ?? '')}
+                    onChange={(e) => updateItem(idx, { [f.key]: e.target.value } as Partial<T>)}
+                    rows={2}
+                    className="text-sm"
+                  />
+                ) : f.type === 'select' ? (
+                  <Select value={String(item[f.key] ?? '')} onValueChange={(v) => updateItem(idx, { [f.key]: v } as Partial<T>)}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(f.options || []).map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    className="h-8 text-sm"
+                    type={f.type === 'number' ? 'number' : 'text'}
+                    value={String(item[f.key] ?? '')}
+                    onChange={(e) => updateItem(idx, { [f.key]: f.type === 'number' ? (Number(e.target.value) || 0) : e.target.value } as Partial<T>)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Button type="button" onClick={addItem} variant="outline" size="sm">
+        <Plus className="h-3.5 w-3.5 mr-1" /> Añadir {itemName}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Editor con toggle de visibilidad ───
+function VisibleJsonArrayEditor<T extends Record<string, unknown> & { visible: boolean }>({
+  value,
+  onChange,
+  fields,
+  itemName,
+  newItem,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  fields: { key: string; label: string; type?: 'text' | 'number' | 'textarea' | 'select'; options?: string[] }[];
+  itemName: string;
+  newItem: T;
+}) {
+  const items = (() => {
+    try { const p = JSON.parse(value || '[]'); return Array.isArray(p) ? p as T[] : []; } catch { return []; }
+  })();
+
+  const updateItem = (idx: number, patch: Partial<T>) => {
+    const next = items.map((it, i) => i === idx ? { ...it, ...patch } : it);
+    onChange(JSON.stringify(next));
+  };
+
+  const removeItem = (idx: number) => {
+    onChange(JSON.stringify(items.filter((_, i) => i !== idx)));
+  };
+
+  const addItem = () => {
+    onChange(JSON.stringify([...items, { ...newItem }]));
+  };
+
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= items.length) return;
+    const next = [...items];
+    [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
+    onChange(JSON.stringify(next));
+  };
+
+  return (
+    <div className="space-y-3">
+      {items.map((item, idx) => (
+        <div key={idx} className={`rounded-xl border p-3 space-y-2 ${item.visible ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-gray-50/50 opacity-60'}`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500">{itemName} {idx + 1}</span>
+            <div className="flex gap-1">
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => updateItem(idx, { visible: !item.visible } as Partial<T>)}
+                title={item.visible ? 'Ocultar' : 'Mostrar'}
+              >
+                {item.visible ? '👁️' : '🚫'}
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => removeItem(idx)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {fields.map((f) => (
+              <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                <Label className="text-[11px] text-gray-500">{f.label}</Label>
+                {f.type === 'textarea' ? (
+                  <Textarea
+                    value={String(item[f.key] ?? '')}
+                    onChange={(e) => updateItem(idx, { [f.key]: e.target.value } as Partial<T>)}
+                    rows={2}
+                    className="text-sm"
+                  />
+                ) : f.type === 'select' ? (
+                  <Select value={String(item[f.key] ?? '')} onValueChange={(v) => updateItem(idx, { [f.key]: v } as Partial<T>)}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(f.options || []).map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    className="h-8 text-sm"
+                    type={f.type === 'number' ? 'number' : 'text'}
+                    value={String(item[f.key] ?? '')}
+                    onChange={(e) => updateItem(idx, { [f.key]: f.type === 'number' ? (Number(e.target.value) || 0) : e.target.value } as Partial<T>)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Button type="button" onClick={addItem} variant="outline" size="sm">
+        <Plus className="h-3.5 w-3.5 mr-1" /> Añadir {itemName}
+      </Button>
+    </div>
+  );
+}
+
 function SettingsTab() {
   const [config, setConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -4323,7 +4564,14 @@ function SettingsTab() {
     (async () => {
       try {
         const res = await fetch('/api/siteconfig');
-        setConfig(await res.json());
+        const data = await res.json();
+        // Si la API responde con error (ej. 404), no aceptamos el objeto.
+        if (!res.ok || !data || data.error || !data.id) {
+          console.error('siteconfig load failed:', data);
+          setConfig(null);
+        } else {
+          setConfig(data as SiteConfig);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -4356,10 +4604,25 @@ function SettingsTab() {
     setConfig({ ...config, [field]: value });
   };
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+      </div>
+    );
+  }
+
+  if (!config) {
+    // No se pudo cargar la configuración desde la API.
+    // Mostramos un mensaje claro con botón de reintentar en vez de un
+    // spinner infinito o un formulario vacío.
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+        <p className="text-red-600 font-semibold">No se pudo cargar la configuración del sitio.</p>
+        <p className="text-sm text-gray-500">Verifica que el servidor esté corriendo y que el archivo <code>data/siteconfig.json</code> exista.</p>
+        <Button onClick={() => window.location.reload()} className="bg-amber-500 hover:bg-amber-600">
+          Reintentar
+        </Button>
       </div>
     );
   }
@@ -4653,6 +4916,109 @@ function SettingsTab() {
         </CardContent>
       </Card>
 
+      {/* ═══ SECCIÓN: Contenido de la Página de Inicio ═══ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Star className="h-5 w-5 text-amber-500" />
+            Contenido de la Página de Inicio
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Beneficios */}
+          <div>
+            <Label className="font-semibold mb-2 block">Banda de beneficios (debajo del hero)</Label>
+            <JsonArrayEditor
+              value={config.homeBenefits}
+              onChange={(v) => updateField('homeBenefits', v)}
+              itemName="Beneficio"
+              newItem={{ icon: 'shield', title: 'Nuevo beneficio', desc: 'Descripción', color: 'text-green-600', bg: 'bg-green-50' }}
+              fields={[
+                { key: 'icon', label: 'Icono (shield, truck, globe, heart)', type: 'select', options: ['shield', 'truck', 'globe', 'heart'] },
+                { key: 'title', label: 'Título' },
+                { key: 'desc', label: 'Descripción' },
+                { key: 'color', label: 'Color texto', type: 'select', options: ['text-green-600', 'text-blue-600', 'text-amber-600', 'text-rose-600', 'text-purple-600'] },
+                { key: 'bg', label: 'Color fondo', type: 'select', options: ['bg-green-50', 'bg-blue-50', 'bg-amber-50', 'bg-rose-50', 'bg-purple-50'] },
+              ]}
+            />
+          </div>
+          <Separator />
+          {/* Estadísticas */}
+          <div>
+            <Label className="font-semibold mb-2 block">Estadísticas (prueba social)</Label>
+            <JsonArrayEditor
+              value={config.socialStats}
+              onChange={(v) => updateField('socialStats', v)}
+              itemName="Estadística"
+              newItem={{ value: '0', label: 'Nueva estadística' }}
+              fields={[
+                { key: 'value', label: 'Valor' },
+                { key: 'label', label: 'Etiqueta' },
+              ]}
+            />
+          </div>
+          <Separator />
+          {/* Testimonios */}
+          <div>
+            <Label className="font-semibold mb-2 block">Testimonios de clientes</Label>
+            <JsonArrayEditor
+              value={config.testimonials}
+              onChange={(v) => updateField('testimonials', v)}
+              itemName="Testimonio"
+              newItem={{ name: 'Cliente', location: 'Ciudad', text: 'Texto del testimonio', rating: 5 }}
+              fields={[
+                { key: 'name', label: 'Nombre' },
+                { key: 'location', label: 'Ubicación' },
+                { key: 'text', label: 'Testimonio', type: 'textarea' },
+                { key: 'rating', label: 'Estrellas (1-5)', type: 'number' },
+              ]}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ═══ SECCIÓN: Footer ═══ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Store className="h-5 w-5 text-amber-500" />
+            Footer del Sitio
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Redes sociales */}
+          <div>
+            <Label className="font-semibold mb-2 block">Redes sociales</Label>
+            <VisibleJsonArrayEditor
+              value={config.socialLinks}
+              onChange={(v) => updateField('socialLinks', v)}
+              itemName="Red social"
+              newItem={{ platform: 'Nueva red', url: '#', icon: 'globe', visible: true }}
+              fields={[
+                { key: 'platform', label: 'Plataforma' },
+                { key: 'url', label: 'URL' },
+                { key: 'icon', label: 'Icono', type: 'select', options: ['whatsapp', 'facebook', 'instagram', 'telegram', 'tiktok', 'globe'] },
+              ]}
+            />
+          </div>
+          <Separator />
+          {/* Trust badges */}
+          <div>
+            <Label className="font-semibold mb-2 block">Elementos de confianza</Label>
+            <VisibleJsonArrayEditor
+              value={config.trustBadges}
+              onChange={(v) => updateField('trustBadges', v)}
+              itemName="Elemento"
+              newItem={{ icon: '✅', text: 'Nuevo elemento', visible: true }}
+              fields={[
+                { key: 'icon', label: 'Icono (emoji)' },
+                { key: 'text', label: 'Texto' },
+              ]}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Save */}
       <div className="flex items-center gap-4">
         <Button onClick={handleSave} disabled={saving} className="bg-amber-500 hover:bg-amber-600 min-w-[120px]">
@@ -4675,6 +5041,7 @@ interface DeliveryZone {
   estimatedTime: string;
   active: boolean;
   order: number;
+  allowsPriorityDelivery: boolean;
   asapSurchargeOverride: boolean;
   asapSurchargeType: string;
   asapSurchargeValue: number;
@@ -4697,6 +5064,7 @@ function DeliveryTab() {
     estimatedTime: 'Mismo día',
     active: true,
     order: 0,
+    allowsPriorityDelivery: false,
     asapSurchargeOverride: false,
     asapSurchargeType: 'fixed',
     asapSurchargeValue: 0,
@@ -4744,6 +5112,7 @@ function DeliveryTab() {
         estimatedTime: form.estimatedTime.trim() || 'Mismo día',
         active: form.active,
         order: Number(form.order) || 0,
+        allowsPriorityDelivery: form.allowsPriorityDelivery,
         asapSurchargeOverride: form.asapSurchargeOverride,
         asapSurchargeType: form.asapSurchargeType,
         asapSurchargeValue: Number(form.asapSurchargeValue) || 0,
@@ -4876,6 +5245,7 @@ function DeliveryTab() {
                   <TableHead>Zona</TableHead>
                   <TableHead className="w-28">Precio</TableHead>
                   <TableHead className="w-36">Tiempo estimado</TableHead>
+                  <TableHead className="w-28">Prioritaria</TableHead>
                   <TableHead className="w-24">Estado</TableHead>
                   <TableHead className="w-32 text-right">Acciones</TableHead>
                 </TableRow>
@@ -4904,6 +5274,32 @@ function DeliveryTab() {
                       </TableCell>
                       <TableCell className="text-sm text-gray-600">
                         {zone.estimatedTime}
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/admin/delivery-zones/${zone.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ allowsPriorityDelivery: !zone.allowsPriorityDelivery }),
+                              });
+                              if (res.ok) await fetchZones();
+                            } catch (err) { console.error(err); }
+                          }}
+                          title={zone.allowsPriorityDelivery ? 'Click para desactivar entrega prioritaria' : 'Click para activar entrega prioritaria'}
+                        >
+                          <Badge
+                            variant="outline"
+                            className={
+                              zone.allowsPriorityDelivery
+                                ? 'bg-amber-100 text-amber-700 border-amber-200 cursor-pointer'
+                                : 'bg-gray-100 text-gray-500 border-gray-200 cursor-pointer'
+                            }
+                          >
+                            {zone.allowsPriorityDelivery ? '⚡ Sí' : '— No'}
+                          </Badge>
+                        </button>
                       </TableCell>
                       <TableCell>
                         <button
@@ -5033,6 +5429,26 @@ function DeliveryTab() {
                   </label>
                 </div>
               </div>
+            </div>
+
+            {/* Permite entrega prioritaria */}
+            <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.allowsPriorityDelivery}
+                  onChange={(e) => setForm({ ...form, allowsPriorityDelivery: e.target.checked })}
+                  className="h-4 w-4 accent-amber-500"
+                />
+                <span className="text-sm font-medium text-gray-800 flex items-center gap-1.5">
+                  ⚡ Permite entrega prioritaria ("Lo antes posible")
+                </span>
+              </label>
+              <p className="text-xs text-gray-500 -mt-1">
+                Si activas esto, los clientes que seleccionen esta zona en el checkout verán la opción
+                de entrega urgente "Lo antes posible" con su recargo correspondiente. Las zonas donde
+                no se habilite esta opción solo permitirán entrega en horario normal.
+              </p>
             </div>
 
             {/* Recargo ASAP opcional por zona */}
@@ -5630,8 +6046,7 @@ function CustomersTab() {
                   ? <span className="text-xs text-gray-400">(vacío = no cambiar)</span>
                   : <span className="text-xs text-gray-400">(vacío = autogenerada)</span>}
               </Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder={editingCustomer ? '••••••••' : 'Se genera automáticamente si está vacío'}

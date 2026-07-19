@@ -49,6 +49,10 @@ export async function PUT(
       data.active = body.active;
     }
 
+    if (typeof body.allowsPriorityDelivery === 'boolean') {
+      data.allowsPriorityDelivery = body.allowsPriorityDelivery;
+    }
+
     if (body.order !== undefined) {
       const order = Number(body.order);
       if (Number.isFinite(order)) data.order = order;

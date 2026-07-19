@@ -74,12 +74,12 @@ export function Header() {
             </div>
           </div>
 
-          {/* Search bar */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-2xl hidden sm:flex">
+          {/* Search bar — 30% más ancho */}
+          <form onSubmit={handleSearch} className="flex-1 max-w-3xl hidden sm:flex">
             <div className="relative w-full flex">
               <Input
                 type="text"
-                placeholder="Buscar productos..."
+                placeholder="Busca productos, marcas o categorías..."
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 className="rounded-r-none border-r-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-10"
@@ -122,14 +122,11 @@ export function Header() {
             </Button>
           </nav>
 
-          {/* Account button */}
+          {/* Account button — reducido */}
           <Button
-            variant={customer ? 'outline' : 'default'}
+            variant="ghost"
             size="sm"
-            className={`shrink-0 h-9 ${customer
-              ? 'border-amber-300 text-amber-700 hover:bg-amber-50'
-              : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm'
-            }`}
+            className="shrink-0 h-9 text-gray-600 hover:text-amber-600"
             onClick={() => setView('account')}
           >
             {customer ? (
@@ -141,7 +138,7 @@ export function Header() {
               </>
             ) : (
               <>
-                <Sparkles className="h-4 w-4 mr-1.5" />
+                <User className="h-4 w-4 mr-1.5" />
                 <span className="hidden sm:inline">Mi Cuenta</span>
                 <User className="h-4 w-4 sm:hidden" />
               </>

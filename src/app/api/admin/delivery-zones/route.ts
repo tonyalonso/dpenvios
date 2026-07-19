@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         estimatedTime: String(body.estimatedTime ?? 'Mismo día').trim() || 'Mismo día',
         active: body.active !== false,
         order: Number.isFinite(Number(body.order)) ? Number(body.order) : 0,
+        allowsPriorityDelivery: body.allowsPriorityDelivery === true,
         asapSurchargeOverride: body.asapSurchargeOverride === true,
         asapSurchargeType: body.asapSurchargeType === 'percent' ? 'percent' : 'fixed',
         asapSurchargeValue: Number.isFinite(Number(body.asapSurchargeValue)) ? Number(body.asapSurchargeValue) : 0,

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { ZoneSelector } from '@/components/ecommerce/ZoneSelector';
 import { CountryFlag, COUNTRY_INFO, getCountryName } from '@/components/ecommerce/CountryFlag';
+import { PasswordInput } from '@/components/ui/password-input';
 
 type Mode = 'welcome' | 'login' | 'register';
 
@@ -414,9 +415,8 @@ function AuthForm({ mode, onBack, onSuccess }: AuthFormProps) {
             <Label htmlFor="password" className="flex items-center gap-1.5">
               <Lock className="h-3.5 w-3.5 text-gray-400" /> Contraseña
             </Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete={isRegister ? "new-password" : "current-password"}
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -1131,11 +1131,11 @@ function PasswordChangeDialog({ open, onOpenChange, onSaved }: PasswordChangeDia
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="current-pw">Contraseña actual *</Label>
-            <Input id="current-pw" type="password" value={form.currentPassword} onChange={(e) => setForm({ ...form, currentPassword: e.target.value })} required />
+            <PasswordInput id="current-pw" value={form.currentPassword} onChange={(e) => setForm({ ...form, currentPassword: e.target.value })} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="new-pw">Nueva contraseña *</Label>
-            <Input id="new-pw" type="password" value={form.newPassword} onChange={(e) => setForm({ ...form, newPassword: e.target.value })} placeholder="Mínimo 6 caracteres" required />
+            <PasswordInput id="new-pw" value={form.newPassword} onChange={(e) => setForm({ ...form, newPassword: e.target.value })} placeholder="Mínimo 6 caracteres" required />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

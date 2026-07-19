@@ -13,6 +13,7 @@ export interface DeliveryZone {
   estimatedTime: string;
   active: boolean;
   order: number;
+  allowsPriorityDelivery?: boolean;
 }
 
 interface ZoneSelectorProps {
@@ -202,8 +203,15 @@ export function ZoneSelector({
                             {zone.description}
                           </span>
                         )}
-                        <span className="block text-[11px] text-gray-600 mt-1">
-                          ⏱ Entrega estimada: <span className="font-medium">{zone.estimatedTime}</span>
+                        <span className="flex items-center gap-3 mt-1 flex-wrap text-[11px] text-gray-600">
+                          <span className="inline-flex items-center gap-1">
+                            ⏱ Entrega estimada: <span className="font-medium">{zone.estimatedTime}</span>
+                          </span>
+                          {zone.allowsPriorityDelivery && (
+                            <span className="inline-flex items-center gap-0.5 text-amber-600 font-medium" title="Esta zona permite entrega prioritaria">
+                              ⚡ Prioritaria
+                            </span>
+                          )}
                         </span>
                       </span>
 

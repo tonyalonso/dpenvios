@@ -206,11 +206,6 @@ export function ProductCard({ product }: ProductCardProps) {
             <span className="text-xs text-gray-500">({product.reviewCount})</span>
           </div>
         )}
-        {product.reviewCount === 0 && (
-          <div className="flex items-center gap-1 mt-1.5">
-            <span className="text-xs text-gray-400">Sin reseñas aún</span>
-          </div>
-        )}
         <div className="mt-3 flex items-end justify-between">
           <div>
             {offerActive ? (
